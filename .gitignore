@@ -1,4 +1,255 @@
-venv/
+# ============================================================
+# Python
+# ============================================================
+
 __pycache__/
-output/
-*.pyc
+*.py[cod]
+*$py.class
+
+*.so
+
+# Python build / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+
+# ============================================================
+# Virtual Environments
+# ============================================================
+
+.venv/
+venv/
+env/
+ENV/
+.env/
+.env.*
+!.env.example
+
+
+# ============================================================
+# Environment / Secrets
+# ============================================================
+
+*.key
+*.pem
+*.secret
+
+# API keys / local secrets
+secrets.json
+config.local.json
+
+
+# ============================================================
+# YOLO / ML Model Files
+# ============================================================
+
+# Model weights can be large
+*.pt
+*.pth
+*.onnx
+*.engine
+*.weights
+
+# If you want to track a specific small model later,
+# explicitly force-add it with:
+# git add -f path/to/model.pt
+
+
+# ============================================================
+# CCTV Videos
+# ============================================================
+
+# Raw CCTV footage can be very large
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+*.mpeg
+*.mpg
+
+# Ignore video directories
+cv/videos/*
+videos/*
+
+# Keep directory structure
+!cv/videos/.gitkeep
+!videos/.gitkeep
+
+
+# ============================================================
+# Generated CV Output
+# ============================================================
+
+# Detection output
+cv/output/*
+
+# Generated frames
+cv/output/frames/*
+cv/output/crops/*
+cv/output/clips/*
+
+# Generated detection/event JSON
+cv/output/detections.json
+
+# Keep output directories in Git
+!cv/output/.gitkeep
+!cv/output/frames/.gitkeep
+!cv/output/crops/.gitkeep
+!cv/output/clips/.gitkeep
+
+
+# ============================================================
+# ROI
+# ============================================================
+
+# IMPORTANT:
+# Keep ROI configuration files tracked because they are
+# part of the application configuration.
+
+# Do NOT ignore:
+# cv/roi/*.json
+
+
+# ============================================================
+# Logs
+# ============================================================
+
+*.log
+logs/
+log/
+*.out
+
+
+# ============================================================
+# Temporary / Debug Files
+# ============================================================
+
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+
+.DS_Store
+Thumbs.db
+
+
+# ============================================================
+# IDE / Editors
+# ============================================================
+
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+.idea/
+*.iml
+
+# Jupyter
+.ipynb_checkpoints/
+
+
+# ============================================================
+# Node / Frontend
+# ============================================================
+
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+.next/
+.nuxt/
+dist/
+.cache/
+
+
+# ============================================================
+# Generated frontend/backend files
+# ============================================================
+
+backend/__pycache__/
+frontend/.cache/
+
+
+# ============================================================
+# Reference Projects
+# ============================================================
+
+# If the Pathguard reference is only for local development
+# and should NOT be committed:
+#
+# reference/
+#
+# Uncomment the following line if your team does not want
+# the reference project pushed to Git:
+# reference/
+
+
+# ============================================================
+# OS Files
+# ============================================================
+
+.DS_Store
+.AppleDouble
+.LSOverride
+
+Icon
+._*
+
+.Spotlight-V100
+.Trashes
+
+
+# ============================================================
+# Local Database Files
+# ============================================================
+
+*.db
+*.sqlite
+*.sqlite3
+
+
+# ============================================================
+# Generated reports / exports
+# ============================================================
+
+*.csv
+*.xlsx
+*.zip
+*.tar
+*.tar.gz
+
+# Keep source/reference archives only if intentionally tracked.
+
+
+# ============================================================
+# Keep Important Project Files
+# ============================================================
+
+# The following should remain tracked:
+#
+# cv/*.py
+# cv/requirements.txt
+# cv/roi/*.json
+# backend/*.py
+# frontend/src/*
+# README.md
+# .gitignore
+# requirements.txt
+# .env.example
