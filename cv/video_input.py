@@ -24,6 +24,35 @@ def open_source(source):
     return cap
 
 
+def get_video_info(source) -> dict:
+    """
+    Query metadata from a video source.
+    Returns dict with keys: width, height, fps, frame_count, duration.
+    """
+    cap = open_source(source)
+    try:
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        if not fps or fps <= 0 or fps != fps:
+            fps = 30.0
+
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        if total_frames < 0:
+            total_frames = 0
+        duration = (total_frames / fps) if total_frames > 0 else 0.0
+
+        return {
+            "width": width,
+            "height": height,
+            "fps": fps,
+            "frame_count": total_frames,
+            "duration": duration,
+        }
+    finally:
+        cap.release()
+
+
 def iter_frames(camera_id, source, frame_skip=1):
     """
     Generator that yields one dict per frame:
@@ -35,9 +64,10 @@ def iter_frames(camera_id, source, frame_skip=1):
             "frame":        <numpy BGR image>
         }
 
-    frame_skip=1 -> every frame, 3 -> every 3rd frame, etc.
+    frame_skip=1 -> every frame, 2 -> every second frame, 3 -> every 3rd frame, etc.
     (frame_number and timestamp always refer to the ORIGINAL video,
-     so skipping frames does not change timestamps.)
+     so skipping frames does not alter timestamps.)
+    Continues until ok == False (true EOF).
     """
     cap = open_source(source)
     is_webcam = isinstance(source, int)
@@ -45,11 +75,6 @@ def iter_frames(camera_id, source, frame_skip=1):
     fps = cap.get(cv2.CAP_PROP_FPS)
     if not fps or fps <= 0 or fps != fps:  # 0, negative or NaN
         fps = 30.0
-        print(f"[{camera_id}] WARNING: could not read FPS, assuming {fps}")
-
-    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    print(f"[{camera_id}] opened {source!r}  fps={fps:.2f}  "
-          f"frames={total if total > 0 else 'unknown (live)'}")
 
     start_time = time.time()
     frame_number = 0
@@ -57,20 +82,19 @@ def iter_frames(camera_id, source, frame_skip=1):
         while True:
             ok, frame = cap.read()
             if not ok:
-                break  # end of video (or webcam disconnected)
+                break  # End of video reached
 
-            # Skip empty / invalid frames instead of crashing
+            # Skip empty / invalid frames
             if frame is None or frame.size == 0:
-                print(f"[{camera_id}] WARNING: empty frame at {frame_number}, skipping")
                 frame_number += 1
                 continue
 
             if frame_number % frame_skip == 0:
                 if is_webcam:
-                    # Webcams have no reliable frame counter / FPS,
-                    # so use wall-clock time since we started.
+                    # Webcams use wall-clock time since start
                     timestamp = time.time() - start_time
                 else:
+                    # Video files use exact frame timestamp based on original FPS
                     timestamp = frame_number / fps
 
                 yield {

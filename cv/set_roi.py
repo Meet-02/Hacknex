@@ -30,14 +30,10 @@ import sys
 import cv2
 import numpy as np
 
+from config import CAMERA_SOURCES, CAMERAS
 from roi import save_roi
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CAMERAS = {
-    "cam_01": os.path.join(BASE_DIR, "videos", "cam_01.mp4"),
-    "cam_02": os.path.join(BASE_DIR, "videos", "cam_02.mp4"),
-    "cam_03": os.path.join(BASE_DIR, "videos", "cam_03.mp4"),
-}
 
 # State for mouse callback
 _points = []

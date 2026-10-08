@@ -43,6 +43,14 @@ SEGMENTATION_MODEL = os.path.join(_HERE, "yolo26n-seg.pt")  # optional
 if not os.path.exists(DETECTION_MODEL):
     DETECTION_MODEL = _DET_FALLBACK
 
+# ── Authoritative camera source mapping ───────────────────────────────────────
+CAMERA_SOURCES: dict[str, str] = {
+    "cam_01": os.path.join(_HERE, "videos", "cam_01.mp4"),
+    "cam_02": os.path.join(_HERE, "videos", "cam_02.mp4"),
+    "cam_03": os.path.join(_HERE, "videos", "cam_03.mp4"),
+}
+CAMERAS = CAMERA_SOURCES  # alias for backward compatibility
+
 # ── Detection thresholds ──────────────────────────────────────────────────────
 # Stage A: full-frame detection
 PERSON_CONF  = 0.45   # minimum confidence to accept a person detection

@@ -35,6 +35,8 @@ import cv2
 from associator import ObjectCandidate, ObjectTrackBuffer, associate_object_with_person
 from config import (
     ALERT_MIN_CONF,
+    CAMERA_SOURCES,
+    CAMERAS,
     CARRIED_OBJECT_CLASSES,
     CONFIRMED_ASSOCIATION_THRESHOLD,
     CROP_CONF,
@@ -57,7 +59,7 @@ from config import (
 from enricher import check_suspicious_support, enrich_event
 from crops import PERSON_CROP_PADDING as _CROPS_DEFAULT, crop_with_padding, save_crop
 from tracker import MIN_PERSON_TRACK_FRAMES as _TRACKER_DEFAULT, PersonTrackFilter
-from video_input import iter_frames
+from video_input import get_video_info, iter_frames
 from roi import (
     draw_roi_overlay,
     get_detection_roi_point,
@@ -69,13 +71,6 @@ BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(BASE_DIR)
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 INTEGRATION_EVENTS_PATH = os.path.join(PROJECT_DIR, "data", "cv_events", "detections.json")
-
-# ── Camera → source map ───────────────────────────────────────────────────────
-CAMERAS = {
-    "cam_01": os.path.join(BASE_DIR, "videos", "cam_01.mp4"),
-    "cam_02": os.path.join(BASE_DIR, "videos", "cam_02.mp4"),
-    "cam_03": os.path.join(BASE_DIR, "videos", "cam_03.mp4"),
-}
 
 # ── Visualization colours (BGR) ───────────────────────────────────────────────
 _COL_PERSON_RELIABLE = (0,   220, 0)    # green
@@ -238,7 +233,7 @@ def save_evidence_frame(frame, camera_id: str, track_id: int,
         return None
     _saved_evidence_keys.add(key)
 
-    folder = os.path.join(OUTPUT_DIR, "frames")
+    folder = os.path.join(OUTPUT_DIR, "frames", camera_id)
     os.makedirs(folder, exist_ok=True)
     ts_str = f"{timestamp:.2f}s".replace(".", "_")
     filename = f"{camera_id}_person_{track_id}_{class_name}_{ts_str}.jpg"
@@ -259,7 +254,7 @@ def save_evidence_crop(frame, bbox: list, camera_id: str, track_id: int,
     if crop.size == 0:
         return None
 
-    folder = os.path.join(OUTPUT_DIR, "crops")
+    folder = os.path.join(OUTPUT_DIR, "crops", camera_id)
     os.makedirs(folder, exist_ok=True)
     ts_str = f"{timestamp:.2f}s".replace(".", "_")
     filename = f"{camera_id}_person_{track_id}_{class_name}_{ts_str}.jpg"
@@ -456,6 +451,21 @@ def process_camera(camera_id: str, source, detector, seg_detector, args,
     """
     from detector import remap_to_frame, split_relevant
 
+    # Query and display video metadata (Part 4)
+    src_display = os.path.relpath(source, PROJECT_DIR).replace(os.sep, "/") if isinstance(source, str) else str(source)
+    try:
+        meta_info = get_video_info(source)
+    except Exception as err:
+        print(f"[ERROR] Could not open video source for {camera_id}: {source} ({err})")
+        raise
+
+    print(f"\n[{camera_id}]")
+    print(f"Source: {src_display}")
+    print(f"Resolution: {meta_info['width']}x{meta_info['height']}")
+    print(f"FPS: {meta_info['fps']:.2f}")
+    print(f"Frames: {meta_info['frame_count']}")
+    print(f"Duration: {meta_info['duration']:.2f}s")
+
     events        = []   # confirmed / probable association events
     frame_records = []   # per-frame debug records
 
@@ -463,8 +473,12 @@ def process_camera(camera_id: str, source, detector, seg_detector, args,
     if args.save_frames:
         os.makedirs(frames_dir, exist_ok=True)
 
+    # Reset evidence deduplication keys for this camera
+    global _saved_evidence_keys
+    _saved_evidence_keys.clear()
+
     use_tracking = bool(detector) and not args.no_track
-    if detector and detector.has_tracked:
+    if detector:
         detector.reset_tracking()
 
     person_filter   = PersonTrackFilter(min_frames=args.min_track_frames)
@@ -477,6 +491,8 @@ def process_camera(camera_id: str, source, detector, seg_detector, args,
     flagged_shadows: set = set()
 
     processed = 0
+    last_frame = 0
+    last_timestamp = 0.0
     roi_polygon = None
     roi_meta = None
     roi_checked = False
@@ -486,6 +502,8 @@ def process_camera(camera_id: str, source, detector, seg_detector, args,
         frame      = item["frame"]
         frame_num  = item["frame_number"]
         timestamp  = item["timestamp"]
+        last_frame = frame_num
+        last_timestamp = timestamp
 
         # ── Load and scale camera ROI on first frame ──────────────────────
         if not roi_checked:
@@ -764,7 +782,7 @@ def process_camera(camera_id: str, source, detector, seg_detector, args,
             for det, pt, identity in roi_entries:
                 cls = det.get("class_name", "object")
                 track_id = det.get("track_id")
-                evidence_dir = os.path.join(OUTPUT_DIR, "frames")
+                evidence_dir = os.path.join(OUTPUT_DIR, "frames", camera_id)
                 os.makedirs(evidence_dir, exist_ok=True)
                 evidence_name = (f"{camera_id}_roi_entry_{cls}_{track_id if track_id is not None else frame_num}_"
                                  f"{frame_num}.jpg")
@@ -819,9 +837,22 @@ def process_camera(camera_id: str, source, detector, seg_detector, args,
 
     ev_confirmed = sum(1 for e in events if e["object"]["association_state"] == "confirmed")
     ev_probable  = sum(1 for e in events if e["object"]["association_state"] == "probable")
-    print(f"[{camera_id}] done: {processed} frames | "
-          f"{len(events)} evidence events  "
-          f"(confirmed={ev_confirmed}  probable={ev_probable})")
+
+    expected_dur = meta_info['duration']
+    actual_dur = last_timestamp
+
+    print(f"\n[{camera_id}] completed")
+    print(f"Processed frames: {processed}")
+    print(f"Last frame: {last_frame}")
+    print(f"Last timestamp: {last_timestamp:.2f}s")
+    print(f"Expected duration: {expected_dur:.2f}s")
+    print(f"Actual processed duration: {actual_dur:.2f}s")
+    print(f"[{camera_id}] evidence events: {len(events)} (confirmed={ev_confirmed}  probable={ev_probable})")
+
+    if meta_info['frame_count'] > 0 and not args.max_frames and last_frame < (meta_info['frame_count'] - 2):
+        print(f"[{camera_id}] WARNING: Video ended earlier than expected frame count: "
+              f"expected={meta_info['frame_count']}, last_frame={last_frame}")
+
     return events
 
 
@@ -831,11 +862,11 @@ def process_camera(camera_id: str, source, detector, seg_detector, args,
 def save_json(all_events: list, path: str):
     os.makedirs(os.path.dirname(path), exist_ok=True)
 
-    # Load existing file so different cameras don't overwrite each other
+    # Load existing file
     existing = []
     if os.path.exists(path):
         try:
-            with open(path, "r") as f:
+            with open(path, "r", encoding="utf-8") as f:
                 existing = json.load(f)
         except (json.JSONDecodeError, IOError):
             pass
@@ -845,19 +876,21 @@ def save_json(all_events: list, path: str):
         if "description" not in e:
             if "video_path" not in e:
                 cam = e.get("camera_id", "cam_01")
-                e["video_path"] = f"videos/{cam}.mp4"
+                e["video_path"] = f"cv/videos/{cam}.mp4"
                 ts = e.get("timestamp", 0.0)
                 e["clip_start"] = max(0.0, round(ts - 1.0, 3))
                 e["clip_end"] = round(ts + 1.0, 3)
             enrich_event(e, set(SUSPICIOUS_OBJECTS.keys()))
 
-    # Merge: existing + new, deduplicate by event_id
-    seen_ids = {e["event_id"] for e in existing}
-    merged   = existing + [e for e in all_events if e["event_id"] not in seen_ids]
+    # Clean merge: keep existing events for cameras NOT in this run,
+    # replace events for cameras that WERE processed in this run.
+    processed_cams = {e["camera_id"] for e in all_events}
+    retained_existing = [e for e in existing if e.get("camera_id") not in processed_cams]
+    merged = retained_existing + all_events
 
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(merged, f, indent=2, default=str)
-    print(f"[JSON] wrote {len(all_events)} new events → {path}  "
+    print(f"[JSON] wrote {len(all_events)} events for cameras {sorted(list(processed_cams))} → {path}  "
           f"(total in file: {len(merged)})")
 
 

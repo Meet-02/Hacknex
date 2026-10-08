@@ -73,10 +73,16 @@ def load_roi(camera_id: str,
     """
     folder = roi_dir or DEFAULT_ROI_DIR
     roi_file = os.path.join(folder, f"{camera_id}.json")
+    project_dir = os.path.dirname(BASE_DIR)
+    rel_file = os.path.relpath(roi_file, project_dir).replace(os.sep, "/")
+
+    print(f"[ROI] Loading ROI for {camera_id}")
+    print(f"[ROI] File: {rel_file}")
 
     # 1. Missing ROI file -> graceful fallback
     if not os.path.exists(roi_file):
-        print(f"WARNING: No ROI configured for {camera_id}.\nROI danger alerts disabled.")
+        print(f"[ROI] No ROI configured for {camera_id}")
+        print(f"[ROI] ROI danger detection disabled for {camera_id}")
         return None, None
 
     # 2. Parse JSON
@@ -84,48 +90,72 @@ def load_roi(camera_id: str,
         with open(roi_file, "r", encoding="utf-8") as f:
             data = json.load(f)
     except Exception as exc:
-        print(f"WARNING: Invalid ROI configuration for {camera_id}. ROI danger alerts disabled. ({exc})")
+        print(f"[ROI] WARNING: Failed to read ROI JSON for {camera_id}: {exc}")
+        print(f"[ROI] No ROI configured for {camera_id}")
+        print(f"[ROI] ROI danger detection disabled for {camera_id}")
         return None, None
 
-    # 3. Validate structure
-    if not isinstance(data, dict) or data.get("camera_id") != camera_id:
-        print(f"WARNING: Invalid ROI configuration for {camera_id}. ROI danger alerts disabled.")
+    # 3. Validate camera_id matches requested camera_id
+    if not isinstance(data, dict):
+        print(f"[ROI] WARNING: ROI JSON must be a dictionary.")
+        print(f"[ROI] No ROI configured for {camera_id}")
+        print(f"[ROI] ROI danger detection disabled for {camera_id}")
         return None, None
+
+    file_cam_id = data.get("camera_id")
+    if file_cam_id != camera_id:
+        print(f"[ROI] REJECTED: ROI file camera_id '{file_cam_id}' does not match requested camera_id '{camera_id}'")
+        print(f"[ROI] No ROI configured for {camera_id}")
+        print(f"[ROI] ROI danger detection disabled for {camera_id}")
+        return None, None
+
+    print(f"[ROI] Camera ID validated: {camera_id}")
+
+    # 4. Validate polygon points
     raw_points = data.get("roi_polygon")
     if not isinstance(raw_points, (list, tuple)) or len(raw_points) < 3:
-        print(f"WARNING: Invalid ROI configuration for {camera_id}. ROI danger alerts disabled.")
+        print(f"[ROI] WARNING: Polygon must contain at least 3 points.")
+        print(f"[ROI] No ROI configured for {camera_id}")
+        print(f"[ROI] ROI danger detection disabled for {camera_id}")
         return None, None
 
     try:
         points = np.array(raw_points, dtype=np.float64)
-        if (points.ndim != 2 or points.shape[1] != 2
-                or not np.isfinite(points).all()):
-            raise ValueError("Polygon points must be a list of [x, y] coordinates.")
+        if (points.ndim != 2 or points.shape[1] != 2 or not np.isfinite(points).all()):
+            raise ValueError("Polygon points must be valid 2D coordinates.")
     except Exception as exc:
-        print(f"WARNING: Invalid ROI configuration for {camera_id}. ROI danger alerts disabled. ({exc})")
-        return None, None
-    if len(np.unique(points, axis=0)) < 3 or cv2.contourArea(points.astype(np.float32)) <= 0:
-        print(f"WARNING: Invalid ROI configuration for {camera_id}. ROI danger alerts disabled.")
+        print(f"[ROI] WARNING: Invalid coordinates: {exc}")
+        print(f"[ROI] No ROI configured for {camera_id}")
+        print(f"[ROI] ROI danger detection disabled for {camera_id}")
         return None, None
 
-    # 4. Validate frame_size
+    if len(np.unique(points, axis=0)) < 3 or cv2.contourArea(points.astype(np.float32)) <= 0:
+        print(f"[ROI] WARNING: Polygon area must be > 0.")
+        print(f"[ROI] No ROI configured for {camera_id}")
+        print(f"[ROI] ROI danger detection disabled for {camera_id}")
+        return None, None
+
+    # 5. Validate frame_size
     ref_size = data.get("frame_size")
     if not (isinstance(ref_size, (list, tuple)) and len(ref_size) == 2
             and all(isinstance(v, (int, float)) and np.isfinite(v) and v > 0 for v in ref_size)):
-        print(f"WARNING: Invalid ROI configuration for {camera_id}. ROI danger alerts disabled.")
+        print(f"[ROI] WARNING: Invalid frame_size in ROI file.")
+        print(f"[ROI] No ROI configured for {camera_id}")
+        print(f"[ROI] ROI danger detection disabled for {camera_id}")
         return None, None
 
     orig_w, orig_h = int(ref_size[0]), int(ref_size[1])
 
-    # 5. Apply frame-size aware scaling if target_size is provided
+    # 6. Apply frame-size aware scaling if target_size is provided
     final_w, final_h = orig_w, orig_h
     if target_size and len(target_size) == 2:
         tgt_w, tgt_h = int(target_size[0]), int(target_size[1])
         if tgt_w > 0 and tgt_h > 0 and (tgt_w != orig_w or tgt_h != orig_h):
             points = scale_roi(points, (orig_w, orig_h), (tgt_w, tgt_h))
             final_w, final_h = tgt_w, tgt_h
-            print(f"[ROI] {camera_id}: scaled ROI from {orig_w}x{orig_h} "
-                  f"to current frame {tgt_w}x{tgt_h}.")
+
+    print(f"[ROI] Original frame size: {orig_w}x{orig_h}")
+    print(f"[ROI] Current frame size: {final_w}x{final_h}")
 
     polygon = np.round(points).astype(np.int32)
     meta = {
@@ -134,9 +164,9 @@ def load_roi(camera_id: str,
         "original_frame_size": [orig_w, orig_h],
         "current_frame_size": [final_w, final_h],
         "vertex_count": len(polygon),
-        "roi_file": os.path.relpath(roi_file, BASE_DIR).replace(os.sep, "/"),
+        "roi_file": rel_file,
     }
-    print(f"[ROI] Loaded ROI for {camera_id} ({len(polygon)} vertices) from {meta['roi_file']}")
+    print(f"[ROI] ROI loaded successfully")
     return polygon, meta
 
 

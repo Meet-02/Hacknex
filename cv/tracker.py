@@ -26,7 +26,7 @@ Everything held back is NOT deleted: the pipeline keeps it in
 """
 
 # ---- defaults (all configurable from the Detector/pipeline side) ----------
-MIN_PERSON_TRACK_FRAMES = 3     # processed frames a person must be seen in
+MIN_PERSON_TRACK_FRAMES = 20     # processed frames a person must be seen in
 PERSON_STRONG_CONF = 0.85       # this confident = reliable even if brand new
 SHADOW_MAX_SECONDS = 2.0        # a "shadow" that lives longer than this is a real person
 ESTABLISHED_FRAMES = 5          # the "main" person must have been seen this many frames
