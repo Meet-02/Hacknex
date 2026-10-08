@@ -66,7 +66,9 @@ from roi import (
 )
 
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
+PROJECT_DIR = os.path.dirname(BASE_DIR)
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
+INTEGRATION_EVENTS_PATH = os.path.join(PROJECT_DIR, "data", "cv_events", "detections.json")
 
 # ── Camera → source map ───────────────────────────────────────────────────────
 CAMERAS = {
@@ -229,7 +231,7 @@ def save_evidence_frame(frame, camera_id: str, track_id: int,
                         frame_number: int) -> Optional[str]:
     """
     Save an evidence frame.  One per (camera, person, class, ~second).
-    Returns the saved path (relative to BASE_DIR) or None if already saved.
+    Returns the saved path (relative to the project root) or None if already saved.
     """
     key = (camera_id, track_id, class_name, int(timestamp))
     if key in _saved_evidence_keys:
@@ -242,7 +244,7 @@ def save_evidence_frame(frame, camera_id: str, track_id: int,
     filename = f"{camera_id}_person_{track_id}_{class_name}_{ts_str}.jpg"
     path = os.path.join(folder, filename)
     cv2.imwrite(path, frame)
-    return os.path.relpath(path, BASE_DIR).replace(os.sep, "/")
+    return os.path.relpath(path, PROJECT_DIR).replace(os.sep, "/")
 
 
 def save_evidence_crop(frame, bbox: list, camera_id: str, track_id: int,
@@ -263,7 +265,7 @@ def save_evidence_crop(frame, bbox: list, camera_id: str, track_id: int,
     filename = f"{camera_id}_person_{track_id}_{class_name}_{ts_str}.jpg"
     path = os.path.join(folder, filename)
     cv2.imwrite(path, crop)
-    return os.path.relpath(path, BASE_DIR).replace(os.sep, "/")
+    return os.path.relpath(path, PROJECT_DIR).replace(os.sep, "/")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -383,7 +385,7 @@ class AssociationEpisodeTracker:
 
         clip_start = max(0.0, round(ep["start_timestamp"] - 1.0, 3))
         clip_end = round(ep["last_timestamp"] + 1.0, 3)
-        video_path = os.path.relpath(self.source, BASE_DIR).replace(os.sep, "/") \
+        video_path = os.path.relpath(self.source, PROJECT_DIR).replace(os.sep, "/") \
                      if isinstance(self.source, str) else str(self.source)
 
         roi_enabled = self.roi_polygon is not None
@@ -697,7 +699,7 @@ def process_camera(camera_id: str, source, detector, seg_detector, args,
                     )
                     clip_start = max(0.0, round(timestamp - 1.0, 3))
                     clip_end   = round(timestamp + 1.0, 3)
-                    video_path = os.path.relpath(source, BASE_DIR).replace(os.sep, "/") \
+                    video_path = os.path.relpath(source, PROJECT_DIR).replace(os.sep, "/") \
                                  if isinstance(source, str) else str(source)
 
                     event = {
@@ -768,7 +770,7 @@ def process_camera(camera_id: str, source, detector, seg_detector, args,
                                  f"{frame_num}.jpg")
                 evidence_abs = os.path.join(evidence_dir, evidence_name)
                 cv2.imwrite(evidence_abs, annotated)
-                video_path = (os.path.relpath(source, BASE_DIR).replace(os.sep, "/")
+                video_path = (os.path.relpath(source, PROJECT_DIR).replace(os.sep, "/")
                               if isinstance(source, str) else str(source))
                 event = {
                     "event_id": str(uuid.uuid4()), "camera_id": camera_id,
@@ -785,7 +787,7 @@ def process_camera(camera_id: str, source, detector, seg_detector, args,
                     "video_path": video_path,
                     "clip_start": max(0.0, round(timestamp - 1.0, 3)),
                     "clip_end": round(timestamp + 1.0, 3),
-                    "evidence_frame_path": os.path.relpath(evidence_abs, BASE_DIR).replace(os.sep, "/"),
+                    "evidence_frame_path": os.path.relpath(evidence_abs, PROJECT_DIR).replace(os.sep, "/"),
                     "inside_roi": True, "roi_point": list(pt), "roi_id": f"{camera_id}_default",
                     "roi_alert": True, "roi_alert_type": "intrusion",
                     "roi_alert_label": f"{cls.title()} entered danger zone",
@@ -1009,6 +1011,18 @@ def main():
     if args.save_json and all_events:
         json_path = os.path.join(OUTPUT_DIR, "detections.json")
         save_json(all_events, json_path)
+        os.makedirs(os.path.dirname(INTEGRATION_EVENTS_PATH), exist_ok=True)
+        with open(json_path, "r", encoding="utf-8") as source:
+            exported_events = json.load(source)
+        for event in exported_events:
+            for key in ("evidence_frame_path", "evidence_crop_path", "frame_path", "crop_path",
+                        "clip_path", "video_path"):
+                value = event.get(key)
+                if value and (value.startswith("output/") or value.startswith("videos/")):
+                    event[key] = f"cv/{value}"
+        with open(INTEGRATION_EVENTS_PATH, "w", encoding="utf-8") as target:
+            json.dump(exported_events, target, indent=2, default=str)
+        print(f"[JSON] exported integration events → {INTEGRATION_EVENTS_PATH}")
     elif all_events:
         print(f"[pipeline] {len(all_events)} evidence events generated. "
               f"Run with --save-json to persist them.")
