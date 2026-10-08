@@ -14,7 +14,7 @@ import os
 
 import cv2
 
-PERSON_CROP_PADDING = 0.15
+PERSON_CROP_PADDING = 0.20
 
 
 def padded_box(bbox, padding, frame_width, frame_height):
