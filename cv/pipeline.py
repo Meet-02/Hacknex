@@ -9,6 +9,7 @@ Examples (run from inside the cv/ folder):
     python pipeline.py --camera cam_02 --show         # live window, press q to quit
     python pipeline.py --save-frames --frame-skip 5   # annotated JPGs in output/frames/
     python pipeline.py --no-detect --max-frames 100   # Stage 1 only (no YOLO needed)
+    python pipeline.py --all-classes                  # debugging: show every COCO class
     python pipeline.py --camera webcam_0 --source 0   # try a laptop webcam
 """
 import argparse
@@ -32,8 +33,16 @@ CAMERAS = {
     # Later, e.g.:  "cam_01": 0,  "cam_02": 1,  "cam_03": 2,
 }
 
-DEFAULT_MODEL = "yolov8n.pt"   # n = fastest, s/m = more accurate
+DEFAULT_MODEL = "yolo26s.pt"   # newest Ultralytics family; n=fastest, s=balanced, m/l/x=more accurate
 DEFAULT_CONF = 0.4
+
+# Only these COCO classes are kept. Everything else (chair, tv, laptop, umbrella,
+# potted plant ... e.g. the water cooler in the background) is ignored.
+PERSON_CLASSES = ["person"]
+VEHICLE_CLASSES = ["bicycle", "motorcycle", "car", "bus", "truck"]
+CARRIED_CLASSES = ["backpack", "handbag", "suitcase"]   # what a person can carry
+DEFAULT_CLASSES = PERSON_CLASSES + VEHICLE_CLASSES + CARRIED_CLASSES
+DEFAULT_BAG_CONF = 0.2   # bags score lower than people, so they get a lower threshold
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 
 
@@ -67,6 +76,9 @@ def process_camera(camera_id, source, detector, args):
     for item in iter_frames(camera_id, source, frame_skip=args.frame_skip):
         frame = item["frame"]
         detections = detector.detect(frame) if detector else []
+        if detector and not args.loose_bags:
+            from detector import keep_carried_items  # needs ultralytics, so import lazily
+            detections = keep_carried_items(detections, CARRIED_CLASSES)
 
         record = {
             "camera_id": item["camera_id"],
@@ -115,8 +127,14 @@ def main():
                         help="override the source: a file path, or a webcam index like 0")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="YOLO weights file")
     parser.add_argument("--conf", type=float, default=DEFAULT_CONF, help="confidence threshold")
-    parser.add_argument("--classes", nargs="*", default=None,
-                        help='only keep these classes, e.g. --classes person car backpack')
+    parser.add_argument("--classes", nargs="*", default=DEFAULT_CLASSES,
+                        help="classes to keep (default: person + vehicles + bags)")
+    parser.add_argument("--all-classes", action="store_true",
+                        help="keep all 80 COCO classes (chair, tv, ... too)")
+    parser.add_argument("--bag-conf", type=float, default=DEFAULT_BAG_CONF,
+                        help="confidence threshold for bag classes (default 0.2)")
+    parser.add_argument("--loose-bags", action="store_true",
+                        help="also keep bags that are NOT touching a person")
     parser.add_argument("--frame-skip", type=int, default=1,
                         help="process every Nth frame (videos are ~60fps, so 5 is a good speed-up)")
     parser.add_argument("--max-frames", type=int, default=0, help="stop after N processed frames (0 = all)")
@@ -138,7 +156,10 @@ def main():
     detector = None
     if not args.no_detect:
         from detector import Detector  # imported here so --no-detect works without ultralytics
-        detector = Detector(args.model, conf_threshold=args.conf, class_names=args.classes)
+        classes = None if args.all_classes else args.classes
+        bag_conf = {name: args.bag_conf for name in CARRIED_CLASSES}
+        detector = Detector(args.model, conf_threshold=args.conf,
+                            class_names=classes, class_conf=bag_conf)
 
     for camera_id, source in jobs:
         try:
