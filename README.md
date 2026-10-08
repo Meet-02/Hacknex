@@ -1,5 +1,8 @@
 # CV Module — Quick Start
 
+This repository keeps the CV pipeline and RAG retrieval independently runnable.
+CV events cross into retrieval only through `data/cv_events/detections.json`.
+
 ## Requirements
 
 - Python 3.x
@@ -159,4 +162,38 @@ python set_roi.py --camera cam_03
 
 ```bash
 python -c "import cv2, numpy, ultralytics; print('CV dependencies OK')"
+
+## CV → RAG integration
+
+Use Python 3.11 for a shared environment, then install both existing dependency
+lists without replacing either one:
+
+```powershell
+cd D:\Hacknex
+py -3.11 -m venv --clear venv
+.\venv\Scripts\Activate.ps1
+python -m pip install -r cv\requirements.txt -r retrieval\requirements.txt
+```
+
+Run the CV pipeline from `cv/`. `--save-json` keeps the normal CV output and
+exports the same events to the shared integration file. Evidence paths in the
+shared file are project-root-relative; the video remains under `cv/videos/`.
+
+```powershell
+cd D:\Hacknex\cv
+..\venv\Scripts\python.exe pipeline.py --camera cam_03 --show --frame-skip 2 --save-json
+```
+
+Index and query the shared events from the project root. Events are indexed into structured storage without generating embeddings; rerunning indexing upserts by `event_id`.
+
+```powershell
+cd D:\Hacknex
+.\venv\Scripts\python.exe scripts\index_cv_events.py --input data\cv_events\detections.json
+.\venv\Scripts\python.exe scripts\test_cv_rag.py "person carrying a handbag"
+.\venv\Scripts\python.exe scripts\test_cv_rag.py "show events from cam_03"
+```
+
+The integration check loads and indexes the contract, queries structured
+retrieval, prints event and evidence metadata, and checks available
+evidence paths on disk.
 ```

@@ -1,0 +1,15 @@
+# Local environments accidentally copied with the standalone RAG project
+venv/
+.venv/
+env/
+Lib/
+Scripts/
+pyvenv.cfg
+
+# Local model/vector-store artifacts
+chroma_db/
+models/**/cache/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
